@@ -19,7 +19,6 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Пока вместо БД будет json, для проверки регистрации, реализуются функции чтения и сохранения
-bd = dict()
 bd_file = os.getenv('USERS')
 
 async def load_bd():
@@ -44,81 +43,57 @@ main_keyboard = types.ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
-# Блок кнопок для не зарегистрированных
-reg_keyboard = types.ReplyKeyboardMarkup(
-    keyboard=[
-        [types.KeyboardButton(text="Зарегистрироваться")]
-    ],
-    resize_keyboard=True
-)
+
+class state_user(StatesGroup):
+    name = State()
+    lastname = State()
+    work = State()
 
 # Приветствие на команду /start
 @dp.message(Command("start"))
-async def send_welcome(message: types.Message):
+async def send_welcome(message: types.Message, state: FSMContext):
     await message.answer("Всем привет! Я Винни-пух — ваш помощник по безопасному соединению.")
 
     # Проверка регистрации и дальнейшая регистрация
     tg_id = str(message.from_user.id)
     bd = await load_bd()
-    if tg_id in bd.keys():
+    if tg_id in bd.keys() and bd[tg_id] != {}:
         await message.answer(f'Привет, {bd[tg_id]['name']}! Что ты хочешь, выбери действие?',
                              reply_markup = main_keyboard)
+        await state.set_state(state_user.work)
 
-    elif tg_id not in bd.keys():
-        await message.answer('Ты ещё не зарегистрирован, чтобы пройти регистрацию, нажми кнопку "Зарегистрироваться".',
-                             reply_markup = reg_keyboard)
+    elif tg_id not in bd.keys() or tg_id in bd.keys() and bd[tg_id] == {}:
+        await message.answer('Ты ещё не зарегистрирован, введи своё имя для регистрации.')
+        await state.set_state(state_user.name)
+        bd[tg_id] = {}
+        await save_bd(bd)
     else: await  message.answer('Какие-то проблемы...')
 
-# Начало регистрации
-@dp.message(lambda msg: msg.text == 'Зарегистрироваться')
-async def start_reg(message: types.Message):
-    tg_id = str(message.from_user.id)
-    # Защита от дурака
-    if tg_id not in bd.keys():
-        bd[tg_id] = {"step": "wait_name"}  # step только, имени нет
-        await message.answer('Введи своё имя')
-    else:
-        del bd[tg_id]
-        bd[tg_id] = {"step": "wait_name"}  # step только, имени нет
-        await message.answer('Введи своё имя')
-        await save_bd(bd)
 
 # Продолжение регистрации, сохраняем имя и фамилию для TG ID
-@dp.message()
-async def continue_reg(message: types.Message):
-    # bd = await load_bd()
+@dp.message(state_user.name)
+async def reg_name(message: types.Message, state: FSMContext):
     tg_id = str(message.from_user.id)
+    bd = await load_bd()
+    bd[tg_id]["name"] = message.text
+    await save_bd(bd) # сохраняем после изменения
+    await state.set_state(state_user.lastname)
+    await message.answer("Отлично, теперь введи фамилию")
 
-    # Пользователь не начал регистрацию
-    if tg_id not in bd or "step" not in bd[tg_id]:
-        await message.answer("Напиши /start чтобы зарегистрироваться", reply_markup=reg_keyboard)
-        return
-
-    step = bd[tg_id]["step"]
-
-    if step == "wait_name":
-        bd[tg_id]["name"] = message.text
-        bd[tg_id]["step"] = "wait_lastname"
-        await save_bd(bd) # сохраняем после изменения
-        await message.answer("Отлично, теперь введи фамилию")
-        return
-
-    elif step == "wait_lastname":
-        bd[tg_id]["lastname"] = message.text
-        del bd[tg_id]["step"]  # регистрация завершена
-        await save_bd(bd)  # сохраняем после изменения
-        await message.answer(
-            f"Супер регистрация завершена!\nИмя: {bd[tg_id]['name']}\nФамилия: {bd[tg_id]['lastname']}",
-            reply_markup=main_keyboard
-        )
-        return  # регистрация закончена
-
-    else:
-        await message.answer("Что-то пошло не так, напиши /start", reply_markup=reg_keyboard)
-
+@dp.message(state_user.lastname)
+async def reg_lastname(message: types.Message, state: FSMContext):
+    tg_id = str(message.from_user.id)
+    bd = await load_bd()
+    bd[tg_id]["lastname"] = message.text
+    await save_bd(bd)  # сохраняем после изменения
+    await state.set_state(state_user.work)
+    await message.answer(
+        f"Супер регистрация завершена!\nИмя: {bd[tg_id]['name']}\nФамилия: {bd[tg_id]['lastname']}",
+        reply_markup=main_keyboard
+    )
 
 # Обработка всех остальных сообщений
-@dp.message()
+@dp.message(state_user.work)
 async def echo_message(message: types.Message):
     await message.answer(message.text)
 
