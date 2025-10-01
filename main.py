@@ -2,15 +2,15 @@
 import os
 import sys
 import json
-import aiofiles
 import asyncio
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import work_with_bd
 
-# Загружаем данные из .env (не забудь добавить в .gitignore)
+# Загружаем данные из .env
 load_dotenv('data.env')
 API_TOKEN = os.getenv('TOKEN')
 
@@ -19,14 +19,8 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Пока вместо БД будет json, для проверки регистрации, реализуются функции чтения и сохранения
-bd_file = os.getenv('USERS')
-with open(bd_file, 'r', encoding='utf-8') as f:
-    database = json.loads(f.read())
-
-# Сохранение в бд
-async def save_bd():
-    async with aiofiles.open(bd_file, mode='w', encoding='utf-8') as file:
-        await file.write(json.dumps(database, ensure_ascii=False, indent=2))
+database = work_with_bd.GetDB()
+print(database)
 
 # Создаём блоки кнопок
 # Основной блок кнопок для зарегистрированных
@@ -44,10 +38,9 @@ class state_user(StatesGroup):
     lastname = State()
     work = State()
 
-# Функция сохраняет БД при возникновении любой ошибки перед завершением программы
+# Функция сохраняет БД при возникновении критической ошибки перед завершением программы
 def save_on_error(exc_type, exc_value, tb):
-    with open('users.json', 'w', encoding='utf-8') as last_file:
-        last_file.write(json.dumps(database, ensure_ascii=False, indent=2))
+    work_with_bd.UpdateBD(database)
 sys.excepthook = save_on_error
 
 # Приветствие на команду /start
@@ -56,7 +49,7 @@ async def send_welcome(message: types.Message, state: FSMContext):
     await message.answer("Всем привет! Я Винни-пух — ваш помощник по безопасному соединению.")
 
     # Проверка регистрации и дальнейшая регистрация
-    tg_id = str(message.from_user.id)
+    tg_id = message.from_user.id
     if tg_id in database.keys() and len(database[tg_id]) == 2:
         await message.answer(f'Привет, {database[tg_id]['name']}! Что ты хочешь, выбери действие?',
                              reply_markup = main_keyboard)
@@ -73,7 +66,7 @@ async def send_welcome(message: types.Message, state: FSMContext):
 # Продолжение регистрации, сохраняем имя и фамилию для TG ID
 @dp.message(state_user.name)
 async def reg_name(message: types.Message, state: FSMContext):
-    tg_id = str(message.from_user.id)
+    tg_id = message.from_user.id
     database[tg_id] = {}
     database[tg_id]["name"] = message.text
     await state.set_state(state_user.lastname)
@@ -81,7 +74,7 @@ async def reg_name(message: types.Message, state: FSMContext):
 
 @dp.message(state_user.lastname)
 async def reg_lastname(message: types.Message, state: FSMContext):
-    tg_id = str(message.from_user.id)
+    tg_id = message.from_user.id
     database[tg_id]["lastname"] = message.text
     await state.set_state(state_user.work)
     await message.answer(
