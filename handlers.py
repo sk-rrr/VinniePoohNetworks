@@ -6,6 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 import json
 import sys
 import keyboards
+from logger import logger
 import work_with_bd
 import work_with_3xui
 
@@ -19,6 +20,7 @@ class state_user(StatesGroup):
 def save_on_error(exc_type, exc_value, tb):
     with open("users.json", "w", encoding="utf-8") as f:
         json.dump(work_with_bd.database, f, ensure_ascii=False, indent=2)
+        logger.info('Успешное резервное копирование БД в json')
 sys.excepthook = save_on_error
 
 # Приветствие на команду /start
@@ -30,6 +32,7 @@ async def send_welcome(message: types.Message, state: FSMContext):
     if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values())  in [2, 3]:
         await message.answer(f'Привет, {work_with_bd.database[tg_id]['name']}! Что ты хочешь, выбери действие?',
                              reply_markup = keyboards.main_keyboard)
+        logger.info(f'Пользователь {tg_id} отправил /start')
         await state.set_state(state_user.work)
 
     elif tg_id not in work_with_bd.database.keys():
@@ -62,10 +65,13 @@ async def reg_lastname(message: types.Message, state: FSMContext):
         f"Супер регистрация завершена!\nИмя: {work_with_bd.database[tg_id]['name']}\nФамилия: {work_with_bd.database[tg_id]['lastname']}",
         reply_markup=keyboards.main_keyboard
     )
+    logger.info(f'Пользователь {tg_id} завершил регистрацию')
 
 # Обработка кнопки инструкция
 async def instructions(message: types.Message):
     await message.answer('GPT в помощь =)')
+    tg_id = message.from_user.id
+    logger.info(f'Пользователь {tg_id} отправил "Инструкция"')
 
 # Обработка всех остальных сообщений
 async def echo_message(message: types.Message):
@@ -76,11 +82,13 @@ async def start_state(message: types.Message, state: FSMContext):
     if message.text == '/start':
         await send_welcome()
     else:
-        tg_id = str(message.from_user.id)
+        tg_id = message.from_user.id
         if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values()) in [2, 3]:
             await message.answer(f'Привет, {work_with_bd.database[tg_id]['name']}! Что ты хочешь, выбери действие?',
                                  reply_markup=keyboards.main_keyboard)
+            logger.info(f'Пользователь {tg_id} отправил /start')
             await state.set_state(state_user.work)
+
         elif tg_id not in work_with_bd.database.keys():
             await message.answer('Ты ещё не зарегистрирован, введи своё имя для регистрации.')
             await state.set_state(state_user.name)
@@ -93,6 +101,7 @@ async def start_state(message: types.Message, state: FSMContext):
 # Создание профиля 3x-ui
 async def create_profile(message: types.Message):
     tg_id = message.from_user.id
+    logger.info(f'Пользователь {tg_id} отправил "Получить ссылку"')
     username = work_with_bd.database[tg_id]['name']
     async with work_with_3xui.XUI() as xui:
         try:

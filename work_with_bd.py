@@ -1,6 +1,7 @@
 import os
 import asyncpg
 from dotenv import load_dotenv
+from logger import logger
 
 # Загружаем данные из .env
 load_dotenv('data.env')
@@ -38,10 +39,11 @@ async def GetDB():
         async with pool.acquire() as conn:
             rows = await conn.fetch('SELECT id, name, lastname FROM users')
             database = {r['id']: {'name': r['name'], 'lastname': r['lastname']} for r in rows}
-        print('INFO: БД загружена')
+        logger.info('БД загружена')
         return database
     except Exception as error:
-        print('INFO ERROR LOAD:', error)
+        logger.exception('Ошибка загрузки БД:', error)
+        return {}
 
 # Добавляем/обновляем пользователей в БД
 async def AddUser(data: dict):
@@ -59,6 +61,6 @@ async def AddUser(data: dict):
     try:
         async with pool.acquire() as conn:
             await conn.executemany(query, records)
-        print('INFO: Пользователи добавлены/обновлены')
+        logger.info('Пользователи добавлены/обновлены')
     except Exception as error:
-        print('INFO ERROR UPDATE:', error)
+        logger.exception('Ошибка обновления БД:', error)
