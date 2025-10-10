@@ -7,6 +7,7 @@ import json
 import sys
 import keyboards
 import work_with_bd
+import work_with_3xui
 
 # Обработка состояния пользователя
 class state_user(StatesGroup):
@@ -22,11 +23,11 @@ sys.excepthook = save_on_error
 
 # Приветствие на команду /start
 async def send_welcome(message: types.Message, state: FSMContext):
-    await message.answer("Всем привет! Я Винни-пух — ваш помощник по безопасному соединению.")
+    await message.answer("Всем привет! Я Винни-Пух — ваш помощник по безопасному соединению.")
 
     # Проверка регистрации и дальнейшая регистрация
     tg_id = message.from_user.id
-    if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id]) == 2:
+    if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values())  in [2, 3]:
         await message.answer(f'Привет, {work_with_bd.database[tg_id]['name']}! Что ты хочешь, выбери действие?',
                              reply_markup = keyboards.main_keyboard)
         await state.set_state(state_user.work)
@@ -34,7 +35,7 @@ async def send_welcome(message: types.Message, state: FSMContext):
     elif tg_id not in work_with_bd.database.keys():
         await message.answer('Ты ещё не зарегистрирован, введи своё имя для регистрации.')
         await state.set_state(state_user.name)
-    elif tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id]) != 2:
+    elif tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values()) not  in [2, 3]:
         await message.answer('Ты ещё не завершил регистрацию, введи своё имя для регистрации.')
         await state.set_state(state_user.name)
     else: await  message.answer('Какие-то проблемы...')
@@ -53,6 +54,7 @@ async def reg_lastname(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
     work_with_bd.database[tg_id]["lastname"] = message.text
     work_with_bd.temp_data[tg_id]["lastname"] = message.text
+    work_with_bd.temp_data[tg_id]["uuid"] = ''
     await work_with_bd.AddUser(work_with_bd.temp_data)
     del work_with_bd.temp_data[tg_id]
     await state.set_state(state_user.work)
@@ -75,23 +77,39 @@ async def start_state(message: types.Message, state: FSMContext):
         await send_welcome()
     else:
         tg_id = str(message.from_user.id)
-        if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id]) == 2:
+        if tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values()) in [2, 3]:
             await message.answer(f'Привет, {work_with_bd.database[tg_id]['name']}! Что ты хочешь, выбери действие?',
                                  reply_markup=keyboards.main_keyboard)
             await state.set_state(state_user.work)
         elif tg_id not in work_with_bd.database.keys():
             await message.answer('Ты ещё не зарегистрирован, введи своё имя для регистрации.')
             await state.set_state(state_user.name)
-        elif tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id]) != 2:
+        elif tg_id in work_with_bd.database.keys() and len(work_with_bd.database[tg_id].values()) not in [2, 3]:
             await message.answer('Ты ещё не завершил регистрацию, введи своё имя для регистрации.')
             await state.set_state(state_user.name)
         else:
             await  message.answer('Какие-то проблемы...')
+
+# Создание профиля 3x-ui
+async def create_profile(message: types.Message):
+    tg_id = message.from_user.id
+    username = work_with_bd.database[tg_id]['name']
+    async with work_with_3xui.XUI() as xui:
+        try:
+            # Создаём профиль 3x-ui
+            link, user_uuid = await xui.add_user(str(tg_id), username)
+            # Отправляем обновление в БД uuid
+            work_with_bd.database[tg_id]['uuid'] = user_uuid
+            await work_with_bd.AddUser({tg_id: work_with_bd.database[tg_id]})
+            await message.answer(f'Профиль создан!\nСсылка: {link}')
+        except Exception as error:
+            await message.answer(f'Ошибка при создании профиля: {error}')
 
 def register_handlers(dp: Dispatcher):
     dp.message.register(send_welcome, Command("start"))
     dp.message.register(reg_name, state_user.name)
     dp.message.register(reg_lastname, state_user.lastname)
     dp.message.register(instructions, state_user.work, F.text == "Инструкция")
+    dp.message.register(create_profile, state_user.work, F.text == "Получить ссылку")
     dp.message.register(echo_message, state_user.work)
     dp.message.register(start_state)

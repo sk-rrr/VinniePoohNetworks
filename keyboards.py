@@ -4,7 +4,7 @@ from aiogram import types
 # Основной блок кнопок для зарегистрированных
 main_keyboard = types.ReplyKeyboardMarkup(
     keyboard=[
-        [types.KeyboardButton(text='Тарифы')],
+        [types.KeyboardButton(text='Получить ссылку')],
         [types.KeyboardButton(text='Инструкция')]
     ],
     resize_keyboard=True

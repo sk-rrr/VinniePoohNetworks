@@ -48,13 +48,13 @@ async def AddUser(data: dict):
     # Если массив пустой, выполнение функции сразу прекращается
     if not data:
         return
-    records = [(id, v['name'], v['lastname']) for id, v in data.items()]
+    records = [(id, v['name'], v['lastname'], v.get('uuid')) for id, v in data.items()]
     # Запрос в БД
     query = '''
-                INSERT INTO users(id, name, lastname)
-                VALUES($1, $2, $3)
+                INSERT INTO users(id, name, lastname, uuid)
+                VALUES($1, $2, $3, $4)
                 ON CONFLICT (id) DO UPDATE
-                SET name = EXCLUDED.name, lastname = EXCLUDED.lastname;
+                SET name = EXCLUDED.name, lastname = EXCLUDED.lastname, uuid = EXCLUDED.uuid;
             '''
     try:
         async with pool.acquire() as conn:
