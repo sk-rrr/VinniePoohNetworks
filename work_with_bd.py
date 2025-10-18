@@ -37,12 +37,12 @@ async def GetDB():
     try:
         # Получаем данные из БД
         async with pool.acquire() as conn:
-            rows = await conn.fetch('SELECT id, name, lastname FROM users')
-            database = {r['id']: {'name': r['name'], 'lastname': r['lastname']} for r in rows}
+            rows = await conn.fetch('SELECT id, name, lastname, uuid, admin FROM users')
+            database = {r['id']: {'name': r['name'], 'lastname': r['lastname'], 'uuid': r['uuid'], 'admin': r['admin']} for r in rows}
         logger.info('БД загружена')
         return database
     except Exception as error:
-        logger.exception('Ошибка загрузки БД:', error)
+        logger.exception(f'Ошибка загрузки БД: {error}')
         return {}
 
 # Добавляем/обновляем пользователей в БД
@@ -63,4 +63,4 @@ async def AddUser(data: dict):
             await conn.executemany(query, records)
         logger.info('Пользователи добавлены/обновлены')
     except Exception as error:
-        logger.exception('Ошибка обновления БД:', error)
+        logger.exception(f'Ошибка обновления БД: {error}')
