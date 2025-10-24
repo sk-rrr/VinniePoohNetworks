@@ -8,9 +8,8 @@ from dotenv import load_dotenv
 import ssl
 import json
 from logger import logger
+import logging as py_logging
 from tenacity import retry, wait_exponential, stop_after_attempt, before_log, after_log
-
-from transliterate.conf import settings
 
 # Загружаем данные из .env
 load_dotenv('data.env')
@@ -56,12 +55,12 @@ class XUI:
     @retry(
         wait=wait_exponential(multiplier=1, min=4, max=10),  # увеличивает время ожидания между попытками
         stop=stop_after_attempt(3),  # максимум 3 попытки
-        before=before_log(logger, logger.info),  # лог перед каждой попыткой
-        after=after_log(logger, logger.warning)  # лог после каждой попытки
+        before=before_log(logger, py_logging.INFO),  # лог перед каждой попыткой
+        after=after_log(logger, py_logging.WARNING)  # лог после каждой попытки
     )
     async  def login(self):
         # Подготовка к запросу
-        login_url = f'{self.__host.replace('panel/', 'login')}'
+        login_url = f"{self.__host.replace('panel/', 'login')}"
         data = {'username': self.__username, 'password': self.__password}
         # Пробуем 3 раза на случай кратковременных сбоем
         try:
@@ -87,10 +86,17 @@ class XUI:
         raise ConnectionError('Не удалось подключиться к 3x-ui после 3 попыток')
 
     # Функция запроса inbound`a
+    @retry(
+        wait=wait_exponential(multiplier=1, min=4, max=10),  # увеличивает время ожидания между попытками
+        stop=stop_after_attempt(3),  # максимум 3 попытки
+        before=before_log(logger, py_logging.INFO),  # лог перед каждой попыткой
+        after=after_log(logger, py_logging.WARNING)  # лог после каждой попытки
+    )
     async def get_inbound(self, inbound_id: str = INBOUND):
-        async with self.session.get(f'{IP3XUI}api/inbounds/get/{inbound_id}', headers=self.global_headers) as response:
+        async with self.session.get(f'{self.__host}api/inbounds/get/{inbound_id}', headers=self.global_headers) as response:
             if response.status == 200:
-                self.inbound = await response.json()
+                data = await response.json()
+                self.inbound = data.get('obj')
                 logger.info('Успешно получен inbound из 3X-UI')
             else:
                 logger.error(f"Ошибка получения inbound`а: {response.status} {await response.json()}")
@@ -98,30 +104,36 @@ class XUI:
 
     # Формирование ссылки для пользователя
     async def create_link_for_user(self, email: str, user_id: str, port: str = VLESSPORT):
-        # Извлекаем нужные параметры из inbound
-        stream = self.inbound.get('streamSettings', {})
-        reality = stream.get('realitySettings', {})
-        security = stream.get('security', 'reality')
-        sni = stream.get('serverNames')[0]
-        public_key = stream.get('publicKey')
-        short_id = ''.join(stream.get('shortIds'))
-        network_type = stream.get('network', 'tcp')
+        stream = json.loads(self.inbound.get('streamSettings'))
+        reality = stream.get('realitySettings')
+        security = stream.get('security')
+        sni = reality.get('serverNames')[0]
+        public_key = reality.get('settings').get('publicKey')
+        short_id = ''.join(reality.get('shortIds'))
+        network_type = stream.get('network')
+        flow = 'xtls-rprx-vision'
         link = (
-            f"vless://{user_id}@{self.__host.replace('http://', '').replace('https://', '').replace('2808', f'{port}').replace('/dashboard/panel/', '')}"
-            f"?security={security}"
-            f"&sni={sni}"
-            f"&fp=chrome"
-            f"&pbk={public_key}"
-            f"&sid={short_id}"
-            f"&spx=/"
+            f"vless://{user_id}@{self.__host.replace('http://', '').replace('https://', '').replace('2808', f'{port}').replace('/dashboard/panel/', '')}?"
             f"&type={network_type}"
-            f"&flow={settings['clients'][0]['flow']}"
             f"&encryption=none"
+            f"&security={security}"
+            f"&pbk={public_key}"
+            f"&fp=chrome"
+            f"&sni={sni}"
+            f"&sid={short_id[:4]}"
+            f"&spx=%2F"
+            f"&flow={flow}"
             f"#{email}"
         )
         return link
 
     # Добавления пользователя в 3x-ui
+    @retry(
+        wait=wait_exponential(multiplier=1, min=4, max=10),  # увеличивает время ожидания между попытками
+        stop=stop_after_attempt(3),  # максимум 3 попытки
+        before=before_log(logger, py_logging.INFO),  # лог перед каждой попыткой
+        after=after_log(logger, py_logging.WARNING)  # лог после каждой попытки
+    )
     async def add_user(self, tg_id: str, username: str, inbound_id: str = INBOUND):
         # Получаем существующий inbound
         await self.get_inbound()
@@ -172,9 +184,16 @@ class XUI:
         return link
 
     # Удаление пользователя из 3x-ui
+    @retry(
+        wait=wait_exponential(multiplier=1, min=4, max=10),  # увеличивает время ожидания между попытками
+        stop=stop_after_attempt(3),  # максимум 3 попытки
+        before=before_log(logger, py_logging.INFO),  # лог перед каждой попыткой
+        after=after_log(logger, py_logging.WARNING)  # лог после каждой попытки
+    )
     async def del_user(self, uuid: str, inbound_id: str = INBOUND):
         # Формируем ссылку запроса
         url = f'{self.__host}api/inbounds/{inbound_id}/delClient/{uuid}'
+        print(url)
         # Отправка POST запроса
         try:
             async with self.session.post(url, headers=self.global_headers) as response:
